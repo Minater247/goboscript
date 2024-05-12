@@ -19,8 +19,15 @@ Costume: () = {
     }
 }
 
+Sound: () = {
+    <l:@L> <name:STR> <r:@R> <alias:(AS <STR>)?> => {
+        sprite.sounds.push(Sound::new(name, l..r, alias));
+    }
+}
+
 Declr: () = {
     COSTUMES Comma<Costume> ";" => {},
+    SOUNDS Comma<Sound> ";" => {},
     <w:NOWARP?> PROC <l:@L> <n:NAME> <r:@R> <a:SpannedComma<NAME>> <b:Stmts> => {
         sprite.procs.insert(n.clone(), Proc::new(n.clone(), l..r, a, b, w.is_none()));
     },

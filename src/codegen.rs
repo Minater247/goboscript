@@ -20,7 +20,7 @@ use self::{
     node_id::{NodeID, NodeIDFactory},
 };
 use crate::{
-    ast::{Costume, Event, EventDetail, Expr, Proc, Project, Sprite, Stmt, Stmts},
+    ast::{Costume, Event, EventDetail, Expr, Proc, Project, Sound, Sprite, Stmt, Stmts},
     blocks::{BinOp, Block, UnOp},
     config::Config,
     diagnostic::{keys::is_key, Diagnostic, DiagnosticKind},
@@ -35,6 +35,7 @@ where T: Write + Seek
     zip: ZipWriter<T>,
     id: NodeIDFactory,
     costumes: FxHashMap<SmolStr, SmolStr>,
+    sounds: FxHashMap<SmolStr, SmolStr>,
     blocks_comma: bool,
     inputs_comma: bool,
 }
@@ -122,6 +123,7 @@ where T: Write + Seek
             zip: ZipWriter::new(file),
             id: Default::default(),
             costumes: Default::default(),
+            sounds: Default::default(),
             blocks_comma: false,
             inputs_comma: false,
         }
@@ -160,6 +162,7 @@ where T: Write + Seek
         Ok(())
     }
 
+    // MTODO: this is where the assets go
     fn assets(&mut self, input: &Path) -> Result<()> {
         for (path, hash) in &self.costumes {
             let (_, extension) = path.rsplit_once('.').unwrap();
@@ -168,6 +171,15 @@ where T: Write + Seek
             let file = File::open(input.join(path.as_str()));
             io::copy(&mut file?, &mut self.zip)?;
         }
+
+        for (path, hash) in &self.sounds {
+            let (_, extension) = path.rsplit_once('.').unwrap();
+            self.zip
+                .start_file(format!("{hash}.{extension}"), FileOptions::default())?;
+            let file = File::open(input.join(path.as_str()));
+            io::copy(&mut file?, &mut self.zip)?;
+        }
+
         Ok(())
     }
 
@@ -224,6 +236,12 @@ where T: Write + Seek
             self.comma(&mut comma)?;
             self.costume(diags, costume, input)?;
         }
+        self.write_all(br#"],"sounds":["#)?;
+        let mut comma = false;
+        for sound in &sprite.sounds {
+            self.comma(&mut comma)?;
+            self.sound(diags, sound, input)?;
+        }
         self.write_all(br#"],"variables":{"#)?;
         let mut comma = false;
         for proc in sprite.procs.values() {
@@ -267,8 +285,8 @@ where T: Write + Seek
                 json!(list.default)
             )?;
         }
-        // FIXME: Can you please fucking implement sounds this time?
-        self.write_all(br#"},"sounds":[]}"#)?;
+        // close the lists object
+        self.write_all(br#"}}"#)?;
         for enum_ in sprite.enums.values() {
             for (variant, span) in &enum_.variants {
                 if !enum_.used_variants.contains(variant) {
@@ -317,6 +335,37 @@ where T: Write + Seek
         let hash = format!("{:x}", hasher.finalize());
         self.costumes.insert(costume.path.clone(), hash.into());
         self.costume(d, costume, input)
+    }
+
+    fn sound(&mut self, d: D, sound: &Sound, input: &Path) -> Result<()> {
+        if let Some(hash) = self.sounds.get(&sound.path) {
+            let (_, extension) = sound.path.rsplit_once('.').unwrap();
+            write!(
+                self.zip,
+                r#"{{"name":{},"assetId":"{hash}","dataFormat":"{extension}","md5ext":"{hash}.{extension}","sampleCount":0,"rate":44000}}"#,
+                json!(*sound.name),
+            )?;
+            return Ok(());
+        }
+        let path = input.join(sound.path.as_str());
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(err) => {
+                if matches!(err.kind(), io::ErrorKind::NotFound) {
+                    d.push(
+                        DiagnosticKind::FileNotFound(sound.path.clone())
+                            .to_diagnostic(sound.span.clone()),
+                    );
+                    return Ok(());
+                }
+                bail!(err);
+            }
+        };
+        let mut hasher = Md5::new();
+        io::copy(&mut file, &mut hasher)?;
+        let hash = format!("{:x}", hasher.finalize());
+        self.sounds.insert(sound.path.clone(), hash.into());
+        self.sound(d, sound, input)
     }
 
     fn proc(&mut self, s: S, d: D, proc: &Proc) -> Result<()> {

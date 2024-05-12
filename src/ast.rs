@@ -27,6 +27,7 @@ impl Project {
 #[derive(Debug, Default)]
 pub struct Sprite {
     pub costumes: Vec<Costume>,
+    pub sounds: Vec<Sound>,
     pub procs: FxHashMap<SmolStr, Proc>,
     pub used_procs: FxHashSet<SmolStr>,
     pub enums: FxHashMap<SmolStr, Enum>,
@@ -44,6 +45,23 @@ pub struct Costume {
 }
 
 impl Costume {
+    pub fn new(path: SmolStr, span: Span, alias: Option<SmolStr>) -> Self {
+        // TODO: validate file extension
+        let name = alias.unwrap_or_else(|| {
+            Path::new(path.as_str()).file_stem().unwrap().to_str().unwrap().into()
+        });
+        Self { name, path, span }
+    }
+}
+
+#[derive(Debug)]
+pub struct Sound {
+    pub name: SmolStr,
+    pub path: SmolStr,
+    pub span: Span,
+}
+
+impl Sound {
     pub fn new(path: SmolStr, span: Span, alias: Option<SmolStr>) -> Self {
         // TODO: validate file extension
         let name = alias.unwrap_or_else(|| {
