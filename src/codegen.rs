@@ -307,11 +307,31 @@ where T: Write + Seek
     }
 
     fn costume(&mut self, d: D, costume: &Costume, input: &Path) -> Result<()> {
+        // If the path has an asterisk, we need to run a glob, then recurse into
+        // this function and exit early.
+        if costume.path.contains('*') {
+            let path = input.join(costume.path.as_str());
+            let paths = glob::glob(path.to_str().unwrap())?;
+            for path in paths {
+                let path = path?;
+                let path = path.strip_prefix(input)?;
+                let path_str = path.to_str().unwrap();
+                let file_name = Path::new(path_str).file_stem().unwrap().to_str().unwrap().to_string();
+                let costume = Costume {
+                    name: file_name.into(),
+                    path: path_str.into(),
+                    span: costume.span.clone(),
+                };
+                self.costume(d, &costume, input)?;
+            }
+            return Ok(());
+        }
+
         if let Some(hash) = self.costumes.get(&costume.path) {
             let (_, extension) = costume.path.rsplit_once('.').unwrap();
             write!(
                 self.zip,
-                r#"{{"name":{},"assetId":"{hash}","dataFormat":"{extension}","md5ext":"{hash}.{extension}"}}"#,
+                r#"{{"name":{},"assetId":"{hash}","dataFormat":"{extension}","md5ext":"{hash}.{extension}"}},"#,
                 json!(*costume.name),
             )?;
             return Ok(());
